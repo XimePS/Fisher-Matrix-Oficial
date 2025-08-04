@@ -1,7 +1,7 @@
 import camb
 from camb import model, initialpower
 import numpy as np
-from scipy.interpolate import RectBivariateSpline, interp2d
+from scipy.interpolate import RectBivariateSpline, interp1d
 
 # ----- PARÁMETROS FIDUCIALES -----
 Omega_b0_fid = 0.05
@@ -58,8 +58,8 @@ def matter_power_spectrum(z_list = redshifts, k_min = kmin, k_max = kmax, npoint
 
     # Obtener el espectro de potencias: pk tiene shape (len(z), len(k))
     k_array_h, z_array, P_array_2d_h = results.get_matter_power_spectrum(minkh=kmin, maxkh=kmax, npoints=npoints_k) #pk esta en dim de z y k
-    k_array = k_array_h # / h_fid 
-    P_array_2d = P_array_2d_h # * h_fid**3
+    k_array = k_array_h / h_fid 
+    P_array_2d = P_array_2d_h * h_fid**3
 
 
     # pk[z_index][k_index] = P(k, z)
@@ -138,6 +138,18 @@ def der_matter_power_spectrum(parametro, epsilon):
     
     return P * (num / den)
 
+def luminosity():
+    data = np.loadtxt("scaledmeanlum-E2Sa.dat")  # o "\t" para tabulaciones
+
+    # Filtrar por un redshift específico, por ejemplo z = 2.5
+
+    # Extraer columnas
+    z_list = data[:, 0]       # columna de k
+    Lum = data[:, 1]   # columna de derivadas con respecto a h
+
+    print(z_list, Lum)
+    return z_list, Lum
+
 ## INTERPOLACIONES
 
 def inter_matter_power_spectrum(z_list = redshifts, k_min = kmin, k_max = kmax, npoints_k = npoints_k, Omega_b0_fid=Omega_b0_fid, Omega_m0_fid=Omega_m0_fid, h_fid=h_fid, ns_fid=ns_fid, sigma8_fid=sigma8_fid):
@@ -160,4 +172,10 @@ def inter_k_matter_power_spectrum():
     dP_dk_interp = RectBivariateSpline(z_array, k_array[0:-1], dP_dk)
     print('Interpolation of derivative of matter power spectrum with respect to k created.')
     return dP_dk_interp
+
+def Lumo():
+    z, L = luminosity()
+    Lumo = interp1d(z, L, fill_value='extrapolate')
+    print('Interpolation of luminosity function created.')
+    return Lumo
 
