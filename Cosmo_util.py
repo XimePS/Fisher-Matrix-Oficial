@@ -58,8 +58,8 @@ def matter_power_spectrum(z_list = redshifts, k_min = kmin, k_max = kmax, npoint
 
     # Obtener el espectro de potencias: pk tiene shape (len(z), len(k))
     k_array_h, z_array, P_array_2d_h = results.get_matter_power_spectrum(minkh=kmin, maxkh=kmax, npoints=npoints_k) #pk esta en dim de z y k
-    k_array = k_array_h / h_fid 
-    P_array_2d = P_array_2d_h * h_fid**3
+    k_array = k_array_h # / h_fid 
+    P_array_2d = P_array_2d_h # * h_fid**3
 
 
     # pk[z_index][k_index] = P(k, z)
