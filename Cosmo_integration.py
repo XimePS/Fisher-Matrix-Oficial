@@ -16,7 +16,7 @@ import logging
 # Basic registry settings
 logging.basicConfig(level=logging.INFO)
 
-import Cosmo_util as cu
+import Cosmo_util_data as cu
 
 # Parametros fiduciales
 
@@ -31,8 +31,11 @@ wa_fid = 0.0
 gamma_fid = 0.55
 
 c = 300000
-Aia = 1.72
+Aia = 1
 Cia = 0.0134
+nia = -1
+bia = 1.13
+
 
 class CosmoIntegration:
     def __init__(self, params):
@@ -80,14 +83,14 @@ class CosmoIntegration:
         z_prime = np.linspace(0, z, 30)
         delta = z / len(z_prime)
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / 67) 
+        return np.sum(integrand) * (c / H_0) 
     
     def r_w(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
         delta = z / len(z_prime)
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / 67) * (H_0 / c)
+        return np.sum(integrand) * (c / H_0) * (H_0 / c)
 
     def n_i_try(self, i, z):
         '''
@@ -111,7 +114,7 @@ class CosmoIntegration:
         result = []
         for z in self.z:
             z_max = 2.5
-            z_prime = np.linspace(z, z_max, 20)
+            z_prime = np.linspace(z, z_max, 30)
             delta = (z_max - z) / len(z_prime)
             r_true = self.r_w(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) 
             n_array = np.array([self.n_i_try(i, zs) for zs in z_prime])
