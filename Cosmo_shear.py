@@ -51,20 +51,6 @@ class CosmicShear:
         self.universe = cosmic_paramss['type']
         self.model = cosmic_paramss['model']
 
-    def generate_interpolator(self, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8):
-        params = {
-            'Omega_m': Omega_m0,
-            'Omega_b': Omega_b0,
-            'h': h,
-            'ns': ns,
-            'sigma8': sigma8,
-            'w0': w0,
-            'wa': wa,
-            'Omega_Lambda': Omega_DE0,  # o lo que use tu wrapper
-            'model': self.model
-        }
-        return cu.inter_matter_power_spectrum(params)
-
     def E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         if self.model == 'ACDM_flat':
             Omega_k0 = 0 
@@ -83,58 +69,67 @@ class CosmicShear:
             Omega_DE0 = 1 - (Omega_m0)
         elif self.model == 'non_ACDM_non_flat_gamma':
             Omega_k0 = 0
-        radicando = Omega_m0 * (1 + z)**3 + (Omega_DE0 * (1 + z)**(3 * (1 + wa + w0)) * np.exp(-3 * wa * (z / (1 + z)))) + (Omega_k0) * (1 + z)**2
+        radicando = (Omega_m0 * (1 + z) ** 3) + (Omega_DE0 * ((1 + z)**(3 * (1 + wa + w0))) * np.exp(-3 * wa * (z / (1 + z)))) + (Omega_k0 * (1 + z)**2)
         return np.sqrt(radicando)
 
     def inverse_E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         return 1 / self.E2(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
 
     def r(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
+        '''
+        In Mpc
+        '''
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
         delta = z / len(z_prime)
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / H_0)
-
+        return np.sum(integrand) * (c / H_0) 
+    
     def r_w(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
         delta = z / len(z_prime)
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand)* (c / H_0) * (H_0 / c)
+        return np.sum(integrand) * (c / H_0) * (H_0 / c)
 
     def SN(self, i, j):
         if i == j:
             return ((sigma_epsilon ** 2) / (n_gal * ((60 * 180 / np.pi)**2) / Nz))
         else: 
             return 0
-        #return (0.3**2) / 35454308.58 if i == j else 0
 
     def D(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         z_prime = np.linspace(0, z, 30)
         E_array = self.E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
         Omega_m = (Omega_m0  * (1 + z_prime)**3) / (E_array**2)
         delta = z / len(z_prime)
-        integral = np.sum((Omega_m**gamma / (1 + z_prime)) * delta)
+        integral = np.sum(((Omega_m**gamma) / (1 + z_prime)) * delta)
         return np.exp(-integral)
     
     ###
     # P y sus derivadas
 
     interp_func = cu.inter_matter_power_spectrum()
+    lnP_spline = cu.build_lnP_spline()
     dP_dk_interp = cu.inter_k_matter_power_spectrum()
 
-    der_P_inter_h = cu.inter_der_matter_power_spectrum('h', 0.01)
-    der_P_inter_Omega_m0 = cu.inter_der_matter_power_spectrum('Omega_m0', 0.01) 
-    der_P_inter_Omega_b0 = cu.inter_der_matter_power_spectrum('Omega_b0', 0.01) 
-    der_P_inter_ns = cu.inter_der_matter_power_spectrum('ns', 0.01)
-    der_P_inter_sigma8 = cu.inter_der_matter_power_spectrum('sigma8', 0.01)
+    der_P_pl_h = cu.inter_pl_matter_power_spectrum('h', 0.013)
+    der_P_mn_h = cu.inter_mn_matter_power_spectrum('h', 0.013)
+    der_P_pl_Om = cu.inter_pl_matter_power_spectrum('Omega_m0', 0.013)
+    der_P_mn_Om = cu.inter_mn_matter_power_spectrum('Omega_m0', 0.013)
+    der_P_pl_Ob = cu.inter_pl_matter_power_spectrum('Omega_b0', 0.013)
+    der_P_mn_Ob = cu.inter_mn_matter_power_spectrum('Omega_b0', 0.013)
+    der_P_pl_ns = cu.inter_pl_matter_power_spectrum('ns', 0.013)
+    der_P_mn_ns = cu.inter_mn_matter_power_spectrum('ns', 0.013)
+    der_P_pl_sigma8 = cu.inter_pl_matter_power_spectrum('sigma8', 0.013)
+    der_P_mn_sigma8 = cu.inter_mn_matter_power_spectrum('sigma8', 0.013)
 
     # Luminosity
     Lumo = cu.Lumo()
 
     def PK(self, z, k):
-        return 10**(self.interp_func(z, np.log10(k), grid=False))  # tiene que ir el log10 del k original y el resultado es igual al esperado, porque la interpolacion se hace con log10(k)
+        lnP = self.lnP_spline(z, np.log10(k), grid=False)
+        return 10**lnP
     
     def PPS(self, z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         k = ((10**l + 0.5) / (self.r(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h))
@@ -147,51 +142,57 @@ class CosmicShear:
             return P*((D_array/D_0)**2)
     
     def der_PPS_parametro(self, z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, parametro):
-        epsilon = 0.01
+        epsilon = 0.013
         H_0 = 100 * h
         k = ((10**l + 0.5) / (self.r(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h))
         P = self.PK(z, k)
         def der_PPS_k(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
             k = ((10**l + 0.5) / (self.r(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h))
-            P = self.dP_dk_interp(z, np.log10(k))
-            if self.universe == 'standard':
-                return float(P)
-            else:
-                D_0 = self.D(0, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                D_array = self.D(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                return float(P * ((D_array/D_0)**2))
+            der = self.dP_dk_interp(z, np.log10(k)) 
+            return der
             
-        k = ((10**l + 0.5) / (self.r(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h))
         third = der_PPS_k(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
 
         if parametro == 'h':
-            first = P * self.der_P_inter_h(z, np.log10(k), grid=False)
-            k_pl = (10**l + 0.5)/(self.r(z, Omega_m0, h * (1 + epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * (h * (1 + epsilon)))
-            k_mn = (10**l + 0.5)/(self.r(z, Omega_m0, h * (1 - epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * (h * (1 - epsilon)))
+            P_plus = self.der_P_pl_h(z, np.log10(k), grid=False)
+            P_minus = self.der_P_mn_h(z, np.log10(k), grid=False)
+            der = (P_plus - P_minus) / (2 * epsilon * h)
+            first = P * der
+            k_pl = (10**l + 0.5)/(self.r(z, Omega_m0, h * (1 + epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h * (1 + epsilon))
+            k_mn = (10**l + 0.5)/(self.r(z, Omega_m0, h * (1 - epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h * (1 - epsilon))
             second = (k_pl - k_mn) / (2 * epsilon * h) 
-            return first + (second * third)
+            return first + (third * second)
         elif parametro == 'ns':
-            first = P * self.der_P_inter_ns(z, np.log10(k), grid=False)
+            P_plus = self.der_P_pl_ns(z, np.log10(k), grid=False)
+            P_minus = self.der_P_mn_ns(z, np.log10(k), grid=False)
+            der = (P_plus - P_minus) / (2 * epsilon * ns)
+            first = P * der
             return first
         elif parametro == 'Omega_b0':
-            first = P * self.der_P_inter_Omega_b0(z, np.log10(k), grid=False)
-            k_pl = (10**l + 0.5)/(self.r(z, Omega_m0, h, Omega_b0 * (1 + epsilon), Omega_DE0, w0, wa, ns, sigma8, gamma) * h)
-            k_mn = (10**l + 0.5)/(self.r(z, Omega_m0, h, Omega_b0 * (1 - epsilon), Omega_DE0, w0, wa, ns, sigma8, gamma) * h)
-            second = (k_pl - k_mn) / (2 * epsilon * Omega_b0)
-            return first + (second * third)
+            P_plus = self.der_P_pl_Ob(z, np.log10(k), grid=False)
+            P_minus = self.der_P_mn_Ob(z, np.log10(k), grid=False)
+            der = (P_plus - P_minus) / (2 * epsilon * Omega_b0)
+            first = P * der
+            return first 
         elif parametro == 'Omega_m0':
-            first = P * self.der_P_inter_Omega_m0(z, np.log10(k), grid=False)
+            P_plus = self.der_P_pl_Om(z, np.log10(k), grid=False)
+            P_minus = self.der_P_mn_Om(z, np.log10(k), grid=False)
+            der = (P_plus - P_minus) / (2 * epsilon * Omega_m0)
+            first = P * der
             k_pl = (10**l + 0.5)/(self.r(z, Omega_m0 * (1 + epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h)
             k_mn = (10**l + 0.5)/(self.r(z, Omega_m0 * (1 - epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * h)
             second = (k_pl - k_mn) / (2 * epsilon * Omega_m0)
-            return first  + (second * third)
+            return first  + (third * second)
         elif parametro == 'sigma8':
-            first = P * self.der_P_inter_sigma8(z, np.log10(k), grid=False)
-            return first  #/ (sigma8 ** 2) #- 2 * P / (sigma8 ** 3) * (sigma8 ** 2)
+            P_plus = self.der_P_pl_sigma8(z, np.log10(k), grid=False)
+            P_minus = self.der_P_mn_sigma8(z, np.log10(k), grid=False)
+            der = (P_plus - P_minus) / (2 * epsilon * sigma8)
+            first = P * der
+            return first 
         else:
             print('We do not have the derivative of the power spectrum with respect to this parameter')
     ###
-    def K_2(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
+    def K(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
 
         H_0 = (100 * h)
         z_prime= self.z
@@ -217,7 +218,7 @@ class CosmicShear:
 
         return K_gg, K_Ig, K_II
     
-    def K(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
+    def K_2(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
 
         H_0 = (100 * h)
         z_prime= self.z
@@ -231,19 +232,20 @@ class CosmicShear:
         n_i_array = np.array([A.n_i_try(i, zs) for zs in z_prime])
         n_j_array = np.array([A.n_i_try(j, zs) for zs in z_prime])
         Wj = np.array(A.Window2(j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma))
-        Wi_IA = (H_0 / c) * n_i_array * E_array
-        Wj_IA = (H_0 / c) * n_j_array * E_array
         r_array = np.array([A.r(zs, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) for zs in z_prime])
 
-        operador = 1.5 * ((H_0 / c)**2) * Omega_m0 * (1 + z_prime) * r_array
+        # Prefactores comunes
+        pref_gg = ((1.5 * Omega_m0 * (1.0 + z_prime))**2) * (H_0 / c)**3
+        pref_Ig = (1.5 * Omega_m0 * (1.0 + z_prime)) * (H_0 / c)**3
+        pref_II = (H_0 / c)**3
 
-        K_gg = (operador ** 2 ) * (Wi * Wj) / (E_array * (r_array ** 2))
-        K_Ig = ((Wi * Wj_IA) + (Wi_IA * Wj)) / (E_array * (r_array ** 2))
-        K_II = (Wi_IA * Wj_IA) / (E_array * (r_array ** 2))
+        # Kernels compactos (para multiplicar directamente P_{δδ}, P_{δI}, P_{II})
+        K_gg = pref_gg * (Wi * Wj) / E_array
+        K_Ig = pref_Ig * (n_i_array * Wj + n_j_array * Wi) / r_array
+        K_II = pref_II * (n_i_array * n_j_array * E_array) / (r_array**2)
 
-        final = (c / H_0) * K_gg, (c / H_0) * K_Ig, (c / H_0) * K_II
 
-        return final
+        return K_gg, K_Ig, K_II
 
     ###
     def operando(self, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
@@ -294,14 +296,12 @@ class CosmicShear:
             integrand_1 = (K_gg * P_gg) * float(delta)
             integrand_2 = (K_Ig * P_Ig) * float(delta)
             integrand_3 = (K_II * P_II) * float(delta)
-            integral_1 =  np.sum(integrand_1)
-            integral_1_final = integral_1 
-            integral_2 =  np.sum(integrand_2)
-            integral_2_final = integral_2 
-            integral_3 =  np.sum(integrand_3)
-            integral_3_final = integral_3
 
-            integral_final = integral_1_final + integral_2_final + integral_3_final + SNs
+            integral_1 =  np.sum(integrand_1)
+            integral_2 =  np.sum(integrand_2)
+            integral_3 =  np.sum(integrand_3)
+
+            integral_final = integral_1 + integral_2 + integral_3 + SNs
 
             result.append(integral_final)
 
@@ -310,7 +310,6 @@ class CosmicShear:
     def Der_C_parametro(self, i ,j, epsilon, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia, parametro):
         z_max, z_min, z0 = 2.5, 0.001, 0.62
         z_prime, delta = self.z, (z_max - z_min) / len(self.z)
-        epsilon = 0.01
         SNs = self.SN(i, j)
 
         C = self.Cosmic_Shear(i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
@@ -433,7 +432,7 @@ class CosmicShear:
                 integral =  np.sum(integrand)
                 integral_final = integral
 
-                result.append(integral_final)
+                result.append(integral_final) 
 
             return np.array(result)
         elif parametro == 'bia':
@@ -497,9 +496,9 @@ class CosmicShear:
 
                 integrand = ((K_gg * der_P_gg)  + (K_Ig * der_P_Ig) + (K_II * der_P_II)) * float(delta)
                 integral =  np.sum(integrand)
-                integral_final = integral
+                integral_final = integral 
 
-                result.append(integral_final)
+                result.append(integral_final) 
 
             return np.array(result)
         
@@ -521,7 +520,7 @@ class CosmicShear:
 
                 integrand = ((K_gg * der_P_gg)  + (K_Ig * der_P_Ig) + (K_II * der_P_II)) * float(delta)
                 integral =  np.sum(integrand)
-                integral_final = integral
+                integral_final = integral 
 
                 result.append(integral_final)
 

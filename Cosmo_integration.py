@@ -36,6 +36,16 @@ Cia = 0.0134
 nia = -1
 bia = 1.13
 
+# ---- ANOTHER PARAMETERS
+
+f_out = 0.1
+c_b = 1.0
+z_b = 0.0
+sigma_b = 0.05
+c_o = 1.0
+z_o = 0.1
+sigma_o = 0.05
+
 
 class CosmoIntegration:
     def __init__(self, params):
@@ -60,7 +70,7 @@ class CosmoIntegration:
             Omega_DE0 = 1 - (Omega_m0)
         elif self.model == 'non_ACDM_non_flat_gamma':
             Omega_k0 = 0
-        radicando = Omega_m0 * (1 + z)**3 + (Omega_DE0 * (1 + z)**(3 * (1 + wa + w0)) * np.exp(-3 * wa * (z / (1 + z)))) + (Omega_k0) * (1 + z)**2
+        radicando = (Omega_m0 * (1 + z) ** 3) + (Omega_DE0 * ((1 + z)**(3 * (1 + wa + w0))) * np.exp(-3 * wa * (z / (1 + z)))) + (Omega_k0 * (1 + z)**2)
         return np.sqrt(radicando)
 
     def inverse_E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
@@ -71,9 +81,9 @@ class CosmoIntegration:
         return ((z / z_0)**2) * np.exp(-(z / z_0)**(3 / 2))
 
     def p_ph(self, z_p, z):
-        def gauss(c, z0, s, z, zp):
-            return (1 / (np.sqrt(2 * np.pi) * s * (1 + z))) * np.exp(-0.5 * ((z - (c * zp) - z0) / (s * (1 + z)))**2)
-        return (1 - 0.1) * gauss(1, 0, 0.05, z, z_p) + 0.1 * gauss(1, 0.1, 0.05, z, z_p)
+        first = ((1 - f_out) / (np.sqrt(2 * np.pi) * sigma_b * (1+z))) * np.exp(- 0.5 * (((z - c_b*z_p - z_b) / (sigma_b * (1+z)))**2))
+        second = (f_out / (np.sqrt(2 * np.pi) * sigma_o * (1+z))) * np.exp(- 0.5 * (((z - c_o*z_p - z_o) / (sigma_o * (1+z)))**2))
+        return first + second
 
     def r(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         '''
@@ -99,14 +109,21 @@ class CosmoIntegration:
         The function is normalized
         '''
         z_bins = [0.001, 0.42, 0.56, 0.68, 0.79, 0.9, 1.02, 1.15, 1.32, 1.58, 2.5]
-        denominators = np.array([0.04599087, 0.04048852, 0.04096115, 0.03951212, 0.03886145, 0.03944441, 0.03751183, 0.03950185, 0.04042198, 0.03827518])
+        denominators = np.array([0.04690055617199938, 0.041209323920287824, 0.04169211292551454, 0.040191768918692396, 0.03953241118138398, 0.040135711830953276, 0.038169468867739365, 0.04019519620236196, 0.04114271877029161, 0.039251552948857606])
 
         def numerator_n_i(i, z):
             z_prime = np.linspace(z_bins[i], z_bins[i + 1], 50)
             delta = (z_bins[i + 1] - z_bins[i]) / len(z_prime)
             multiplication_array = self.n_t(z) * self.p_ph(z_prime, z)
-            return np.sum(multiplication_array * delta)
-
+            result = np.sum(multiplication_array * delta)
+            return float(result)
+        #def denominator(i):
+            z_prime = np.linspace(z_bins[0], z_bins[-1], 30)
+            delta = (z_prime[-1] - z_prime[0]) / len(z_prime)
+            num = np.array([numerator_n_i(i, z_p) for z_p in z_prime])
+            deno = float(np.sum(num) * delta)
+            print(deno)
+            return deno
         return numerator_n_i(i, z) / denominators[i]
 
     def Window2(self, i, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
@@ -122,3 +139,4 @@ class CosmoIntegration:
             integrand = n_array * (1 - (r_true  / r_array)) * delta
             result.append(np.sum(integrand))
         return np.array(result)
+    

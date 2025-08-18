@@ -29,6 +29,7 @@ kmax = 35
 npoints_k = 800
 k_array_21 = np.logspace(5e-4, 35, 800)
 
+# ---- MATTER POWER SPECTRUM ----
 
 def matter_power_spectrum(): 
     data = np.loadtxt("pkz-Fiducial.txt")  # ajusta el nombre
@@ -58,24 +59,9 @@ def matter_power_spectrum():
 
         # Insertar en la matriz
         P_matrix[i, :] = P_vals_z
-    return z_unique, k_vals_z , P_matrix #/ (h_fid**3)) * (sigma8_fid ** 2)
+    return z_unique, k_vals_z , P_matrix 
 
-def inter_matter_power_spectrum():
-    z_unique, k_vals_z, P_array_2d = matter_power_spectrum()
-    k_array = np.log10(k_vals_z)  # Convertir a logaritmo para mejor interpolación
-    P_array_2d = np.log10(P_array_2d)  # Convertir a logaritmo para mejor interpolación
-    interp_func = RectBivariateSpline(z_unique, k_array, P_array_2d)
-    print('Interpolation of matter power spectrum created.')
-    return interp_func
-
-def der_k_matter_power_spectrum():
-    z_array, k_array, P_array_2d = matter_power_spectrum()
-
-    # Usamos gradient en el eje de k (axis=1)
-    # Es importante pasar el espaciado k_array explícitamente
-    dP_dk = np.gradient(P_array_2d, k_array, axis=1)
-
-    return k_array, z_array, dP_dk
+# ---- DERIVATIVES ----
 
 def pl_matter_power_spectrum(parametro, epsilon):
     
@@ -370,14 +356,102 @@ def mn_matter_power_spectrum(parametro, epsilon):
     
     return z_unique, k_vals_z , P_matrix 
 
-def der_matter_power_spectrum(parametro, epsilon):
+
+def luminosity():
+    data = np.loadtxt("scaledmeanlum-E2Sa.dat")  # o "\t" para tabulaciones
+
+    # Filtrar por un redshift específico, por ejemplo z = 2.5
+
+    # Extraer columnas
+    z_list = data[:, 0]       # columna de k
+    Lum = data[:, 1]   # columna de derivadas con respecto a h
+
+    return z_list, Lum
+
+
+# ---- INTERPOLATIONS ----
+
+def inter_matter_power_spectrum():
+    '''
+    k -> log10
+    P -> log
+    '''
+    z_unique, k_vals_z, P_array_2d = matter_power_spectrum()
+    k_array = np.log10(k_vals_z)  # Convertir a logaritmo para mejor interpolación
+    P_array_2d = np.log10(P_array_2d)  # Convertir a logaritmo para mejor interpolación
+    interp_func = RectBivariateSpline(z_unique, k_array, P_array_2d)
+    print('Interpolation of matter power spectrum created.')
+    return interp_func
+
+
+def build_lnP_spline():
+    '''
+    k -> normal
+    P -> log10
+    '''
+    z_unique, k_vals, P_matrix = matter_power_spectrum()  # NO re-escales por sigma8 aquí
+    lnP = np.log10(P_matrix)  # log natural
+    S = RectBivariateSpline(z_unique, np.log10(k_vals), lnP)
+    print('Interpolation of matter power spectrum created.')
+    return S
+
+
+def inter_pl_matter_power_spectrum(parametro, epsilon):    
+    """
+    Calcula la derivada del espectro de potencia de materia con respecto a un parámetro dado.
+    k -> log10
+    P -> log
+    """
+    z_list, k_list, P_plus = pl_matter_power_spectrum(parametro, epsilon)
+    P_plus = RectBivariateSpline(z_list, np.log10(k_list), np.log(P_plus))
+    return P_plus
+
+
+def inter_mn_matter_power_spectrum(parametro, epsilon):    
+    """
+    Calcula la derivada del espectro de potencia de materia con respecto a un parámetro dado.
+    k -> log10
+    P -> log
+    """
+    z_list, k_list, P_minus = mn_matter_power_spectrum(parametro, epsilon)
+    P_minus = RectBivariateSpline(z_list, np.log10(k_list), np.log(P_minus))
+    return P_minus
+
+
+def inter_k_matter_power_spectrum():
+    '''
+    k -> normal
+    P -> normal
+    '''
+    z_array, k_array, P_array_2d = matter_power_spectrum()
+    dP_dk = np.diff(P_array_2d, axis=1) / np.diff(k_array)
+    dP_dk_interp = RectBivariateSpline(z_array, np.log10(k_array[1:]), dP_dk)
+    print('Interpolation of derivative of matter power spectrum with respect to k created.')
+    return dP_dk_interp
+
+
+def Lumo():
+    '''
+    k -> normal
+    L -> normal
+    '''
+    z, L = luminosity()
+    Lumo = interp1d(z, L, fill_value='extrapolate')
+    print('Interpolation of luminosity function created.')
+    return Lumo
+
+
+# ---- ANOTHER TRIES ----
+
+
+#def der_matter_power_spectrum(parametro, epsilon):
     """
     Calcula la derivada del espectro de potencia de materia con respecto a un parámetro dado.
     """
     z_list, k_list, P_plus = pl_matter_power_spectrum(parametro, epsilon) 
-    z_list, k_list, P_minus = mn_matter_power_spectrum(parametro, epsilon)
-    P_plus = np.log(P_plus)
-    P_minus = np.log(P_minus)
+    P_plus = RectBivariateSpline(z_list, np.log10(k_list), np.log(P_plus))
+    z_list, k_list, P_minus = mn_matter_power_spectrum(parametro, np.log(epsilon))
+    P_minus = RectBivariateSpline(z_list, np.log10(k_list), P_minus)
 
     if parametro == 'Omega_b0':
         num = (P_plus - P_minus)
@@ -398,40 +472,34 @@ def der_matter_power_spectrum(parametro, epsilon):
     else:
         raise ValueError("Parámetro no reconocido. Debe ser uno de: 'Omega_b0_fid', 'Omega_m0_fid', 'h_fid', 'ns_fid', 'sigma8_fid'.")
     
-    return z_list, k_list * h_fid, (num / den) * (h_fid ** 3)
+    return z_list, k_list , (num / den) 
 
+#def inter_pl_matter_power_spectrum(parametro, epsilon):    
+    """
+    Calcula la derivada del espectro de potencia de materia con respecto a un parámetro dado.
+    """
+    z_list, k_list, P_plus = pl_matter_power_spectrum(parametro, epsilon) 
+    P_plus = RectBivariateSpline(z_list, np.log10(k_list), np.log(P_plus))
+    z_list, k_list, P_minus = mn_matter_power_spectrum(parametro, epsilon)
+    P_minus = RectBivariateSpline(z_list, np.log10(k_list), np.log(P_minus))
 
-def luminosity():
-    data = np.loadtxt("scaledmeanlum-E2Sa.dat")  # o "\t" para tabulaciones
-
-    # Filtrar por un redshift específico, por ejemplo z = 2.5
-
-    # Extraer columnas
-    z_list = data[:, 0]       # columna de k
-    Lum = data[:, 1]   # columna de derivadas con respecto a h
-
-    return z_list, Lum
-
-## INTERPOLACIONES
-
-def inter_der_matter_power_spectrum(parametro, epsilon):    
-    z_list, k_list, der = der_matter_power_spectrum(parametro, epsilon)
-    if parametro == 'Omega_m0':
-        interp_func = RectBivariateSpline(z_list, np.log10(k_list[1:]), der)
+    if parametro == 'Omega_b0':
+        num = (P_plus - P_minus)
+        den = (2 * epsilon * Omega_b0_fid)
+    elif parametro == 'Omega_m0':
+        P_minus = P_minus[:, 1:]
+        num = (P_plus - P_minus)
+        den = (2 * epsilon * Omega_m0_fid)
+    elif parametro == 'h':
+        num = (P_plus - P_minus)
+        den = (2 * epsilon * h_fid)
+    elif parametro == 'ns':
+        num = (P_plus - P_minus)
+        den = (2 * epsilon * ns_fid)
+    elif parametro == 'sigma8':
+        num = (P_plus - P_minus)
+        den = (2 * epsilon * sigma8_fid)
     else:
-        interp_func = RectBivariateSpline(z_list, np.log10(k_list), der)
-    return interp_func
-
-def inter_k_matter_power_spectrum():
-    k_array, z_array, dP_dk = der_k_matter_power_spectrum()
-    k_array = np.log10(k_array)  # Convertir a logaritmo para mejor interpolación
-    dP_dk = dP_dk  # Convertir a
-    dP_dk_interp = RectBivariateSpline(z_array, k_array, dP_dk)
-    print('Interpolation of derivative of matter power spectrum with respect to k created.')
-    return dP_dk_interp
-
-def Lumo():
-    z, L = luminosity()
-    Lumo = interp1d(z, L, fill_value='extrapolate')
-    print('Interpolation of luminosity function created.')
-    return Lumo
+        raise ValueError("Parámetro no reconocido. Debe ser uno de: 'Omega_b0_fid', 'Omega_m0_fid', 'h_fid', 'ns_fid', 'sigma8_fid'.")
+    
+    return z_list, k_list , (num / den) 
