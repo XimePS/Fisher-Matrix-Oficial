@@ -2,23 +2,14 @@ import numpy as np
 import sympy as smp
 import matplotlib.pyplot as plt
 import pandas as pd
-
-# For interpolation
 from scipy.interpolate import RectBivariateSpline, interp2d
 
-import warnings
-
-# Ignore DeprecationWarnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", message=".*divmax.*")
 
 import logging
 # Basic registry settings
 logging.basicConfig(level=logging.INFO)
 
-import Cosmo_util_data as cu
 import Cosmo_integration as ci
-
 import Interpolation as int
 
 # Parametros fiduciales
@@ -34,17 +25,10 @@ wa_fid = 0.0
 gamma_fid = 0.55
 
 #c = 9.72 * 10 ** (-15) # en Mpc # 300000 en km/s
-c = 300000 #en km/s
 Aia = 1.72
 Cia = 0.0134
 nia = -0.41
 bia = 2.17
-
-sigma_epsilon = 0.3
-
-n_gal = 30 #arcmin^-2
-
-Nz = 10
 
 
 class CosmicShear:
@@ -54,6 +38,11 @@ class CosmicShear:
         self.universe = cosmic_paramss['type']
         self.model = cosmic_paramss['model']
         self.IA = cosmic_paramss['IA']
+        self.epsilon = cosmic_paramss['epsilon']
+        self.Nz = cosmic_paramss['Nz']
+        self.c = cosmic_paramss['c']
+        self.sigma_epsilon = cosmic_paramss['sigma_epsilon']
+        self.n_gal = cosmic_paramss['n_gal']
 
     def E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         if self.model == 'ACDM_flat':
@@ -87,18 +76,18 @@ class CosmicShear:
         z_prime = np.linspace(0, z, 30)
         delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / H_0) 
+        return np.sum(integrand) * (self.c / H_0) 
     
     def r_w(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
         delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / H_0) * (H_0 / c)
+        return np.sum(integrand) * (self.c / H_0) * (H_0 / self.c)
 
     def SN(self, i, j): # unidades de area sr
         if i == j:
-            return ((sigma_epsilon ** 2) / (n_gal * ((60 * 180 / np.pi)**2) / Nz))
+            return ((self.sigma_epsilon ** 2) / (self.n_gal * ((60 * 180 / np.pi)**2) / self.Nz))
         else: 
             return 0
 
@@ -152,12 +141,12 @@ class CosmicShear:
     Lumo = int.Lumo()
 
     def PK(self, z, k):
-        lnP = self.interp_func(z, np.log(k / h_fid), grid=False)
+        lnP = self.interp_func(z, np.log(k), grid=False)
         return np.exp(lnP) 
     
     def PPS(self, z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
-        k = self.l_to_k(l, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-        P = self.PK(z, k) 
+        k = self.l_to_k(l, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) / h
+        P = self.PK(z, k) / (sigma8 ** 2)
         if self.universe == 'standard':
             return P 
         else:
@@ -166,35 +155,34 @@ class CosmicShear:
             return P*((D_array/D_0)**2)
     
     def der_PPS_parametro(self, z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, parametro):
-        epsilon = 0.013
         k = self.l_to_k(l, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
         P = self.PPS(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
 
         def der_PPS_k(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
-            der = self.dP_dk_interp(z, np.log(k / h_fid)) 
+            der = self.dP_dk_interp(z, np.log(k / h)) 
             return der
         
         def der_P_parametro(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, parametro):
             if parametro == "h":
-                P_plus = self.der_dic[parametro]["pl"](z, np.log(k / h_fid), grid=False) 
-                P_minus = self.der_dic[parametro]["mn"](z, np.log(k / h_fid), grid=False) 
-                return P * (P_plus - P_minus) / (2 * epsilon * self.fiduciales[parametro])
+                P_plus = self.der_dic[parametro]["pl"](z, np.log(k / h ), grid=False) 
+                P_minus = self.der_dic[parametro]["mn"](z, np.log(k / h ), grid=False) 
+                return P * (P_plus - P_minus) / (2 * self.epsilon * self.fiduciales[parametro])
             elif parametro in self.der_dic:
-                P_plus = self.der_dic[parametro]["pl"](z, np.log(k / h_fid)) 
-                P_minus = self.der_dic[parametro]["mn"](z, np.log(k / h_fid)) 
-                return P * (P_plus - P_minus) / (2 * epsilon * self.fiduciales[parametro])
+                P_plus = self.der_dic[parametro]["pl"](z, np.log(k * h_fid)) 
+                P_minus = self.der_dic[parametro]["mn"](z, np.log(k * h_fid)) 
+                return P * (P_plus - P_minus) / (2 * self.epsilon * self.fiduciales[parametro])
             else:
                 return 0
         
         def der_k_parametro(z, l, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, parametro):
             if parametro == "h":
-                k_pl = self.l_to_k(l, z, Omega_m0, h * (1 + epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                k_mn = self.l_to_k(l, z, Omega_m0, h * (1 - epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                return (k_pl - k_mn) / (2 * epsilon * self.fiduciales[parametro])
+                k_pl = self.l_to_k(l, z, Omega_m0, h * (1 + self.epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
+                k_mn = self.l_to_k(l, z, Omega_m0, h * (1 - self.epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
+                return (k_pl - k_mn) / (2 * self.epsilon * self.fiduciales[parametro])
             elif parametro == "Omega_m0":
-                k_pl = self.l_to_k(l, z, Omega_m0* (1 + epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                k_mn = self.l_to_k(l, z, Omega_m0* (1 - epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
-                return (k_pl - k_mn) / (2 * epsilon * self.fiduciales[parametro])
+                k_pl = self.l_to_k(l, z, Omega_m0* (1 + self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
+                k_mn = self.l_to_k(l, z, Omega_m0* (1 - self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
+                return (k_pl - k_mn) / (2 * self.epsilon * self.fiduciales[parametro])
             else:
                 return 0
         
@@ -205,11 +193,10 @@ class CosmicShear:
         return first + (second * third)
     ###
     def K(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
-
         H_0 = (100 * h)
         z_prime= self.z
 
-        params = {'z': z_prime, 'model': self.model}
+        params = {'z': z_prime, 'model': self.model, 'c': self.c}
     
         A = ci.CosmoIntegration(params)
 
@@ -220,9 +207,9 @@ class CosmicShear:
         n_j_array = np.array([A.n_i_try(j, zs) for zs in z_prime])
         r_array = np.array([A.r_w(zs, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) for zs in z_prime])
 
-        operador1 = ((3/2 * Omega_m0 * (1+z_prime)) **2) * ((H_0 / c) ** 3)
-        operador2 = 3/2 * Omega_m0 * (1+z_prime) * ( (H_0 / c) ** 3)
-        operador3 =  (H_0 / c) ** 3
+        operador1 = ((3/2 * Omega_m0 * (1+z_prime)) **2) * ((H_0 / self.c) ** 3)
+        operador2 = 3/2 * Omega_m0 * (1+z_prime) * ( (H_0 / self.c) ** 3)
+        operador3 =  (H_0 / self.c) ** 3
 
         K_gg = operador1 * (Wi * Wj) / (E_array)
         K_Ig = operador2 * ((n_i_array * Wj) + (n_j_array * Wi)) / (r_array) 
@@ -233,8 +220,7 @@ class CosmicShear:
     ###
     def operando(self, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
         if self.IA == True:
-            z_max, z_min, z0 = 2.5, 0.001, 0.62
-            z_prime, delta = self.z, (z_max - z_min) / len(self.z)
+            z_prime = self.z
             D_array = np.array([self.D(zs, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) for zs in z_prime])
             F = ((1 + z_prime) ** nia) * (self.Lumo(z_prime) ** bia)
             op = (-(Aia * Cia * Omega_m0 * F) / D_array) 
@@ -243,9 +229,7 @@ class CosmicShear:
             return 1
 
     def Ps(self, l, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia, k):
-        z_max, z_min = max(self.z), min(self.z)
         z_prime = self.z
-
         operando = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
 
         def lambda_k(i): 
@@ -267,7 +251,6 @@ class CosmicShear:
 
     
     def Cosmic_Shear(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
-        z_max, z_min = max(self.z), min(self.z)
         z_prime = self.z 
         delta = z_prime[1] - z_prime[0]
         SNs = self.SN(i, j)
@@ -295,8 +278,7 @@ class CosmicShear:
     
     # ----- Derivadas de C respecto a los parámetros -----
     
-    def Der_C_parametro(self, i ,j, epsilon, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia, parametro):
-        z_max, z_min = max(self.z), min(self.z)
+    def Der_C_parametro(self, i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia, parametro):
         z_prime = self.z
         delta = z_prime[1] - z_prime[0]
 
@@ -306,40 +288,40 @@ class CosmicShear:
 
         def der_K_parametro(i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
             if parametro == 'h':
-                K_gg_pl, K_Ig_pl, K_II_pl = self.K(i ,j, Omega_m0, h * (1 + epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
-                K_gg_mn, K_Ig_mn, K_II_mn = self.K(i ,j, Omega_m0, h * (1 - epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
+                K_gg_pl, K_Ig_pl, K_II_pl = self.K(i ,j, Omega_m0, h * (1 + self.epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
+                K_gg_mn, K_Ig_mn, K_II_mn = self.K(i ,j, Omega_m0, h * (1 - self.epsilon), Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
 
-                der_K_gg = (K_gg_pl - K_gg_mn) / (2*epsilon*h)
-                der_K_Ig = (K_Ig_pl - K_Ig_mn) / (2*epsilon*h)
-                der_K_II = (K_II_pl - K_II_mn) / (2*epsilon*h)
+                der_K_gg = (K_gg_pl - K_gg_mn) / (2*self.epsilon*h)
+                der_K_Ig = (K_Ig_pl - K_Ig_mn) / (2*self.epsilon*h)
+                der_K_II = (K_II_pl - K_II_mn) / (2*self.epsilon*h)
             elif parametro == 'Omega_m0':
-                K_gg_pl, K_Ig_pl, K_II_pl = self.K(i ,j, Omega_m0 * (1 + epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
-                K_gg_mn, K_Ig_mn, K_II_mn = self.K(i ,j, Omega_m0 * (1 - epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
+                K_gg_pl, K_Ig_pl, K_II_pl = self.K(i ,j, Omega_m0 * (1 + self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
+                K_gg_mn, K_Ig_mn, K_II_mn = self.K(i ,j, Omega_m0 * (1 - self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia)
 
-                der_K_gg = (K_gg_pl - K_gg_mn) / (2*epsilon*Omega_m0)
-                der_K_Ig = (K_Ig_pl - K_Ig_mn) / (2*epsilon*Omega_m0)
-                der_K_II = (K_II_pl - K_II_mn) / (2*epsilon*Omega_m0)
+                der_K_gg = (K_gg_pl - K_gg_mn) / (2*self.epsilon*Omega_m0)
+                der_K_Ig = (K_Ig_pl - K_Ig_mn) / (2*self.epsilon*Omega_m0)
+                der_K_II = (K_II_pl - K_II_mn) / (2*self.epsilon*Omega_m0)
             else:
                 der_K_gg, der_K_Ig, der_K_II = 0, 0, 0
             return der_K_gg, der_K_Ig, der_K_II
         
         def der_IA_parametro(i ,j, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia, nia, bia):
             if parametro == 'Aia': # Estas derivadas dan lo mismo que lo analitico
-                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia * (1 + epsilon), nia, bia)
-                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia * (1 - epsilon), nia, bia)
-                der_op1 = (op1_pl - op1_mn) / (2*epsilon*Aia)
+                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia * (1 + self.epsilon), nia, bia)
+                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia * (1 - self.epsilon), nia, bia)
+                der_op1 = (op1_pl - op1_mn) / (2*self.epsilon*Aia)
             elif parametro == 'nia':
-                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia * (1 + epsilon), bia)
-                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia * (1 - epsilon), bia)
-                der_op1 = (op1_pl - op1_mn) / (2*epsilon*nia)
+                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia * (1 + self.epsilon), bia)
+                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia * (1 - self.epsilon), bia)
+                der_op1 = (op1_pl - op1_mn) / (2*self.epsilon*nia)
             elif parametro == 'bia':
-                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia * (1 + epsilon))
-                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia * (1 - epsilon))
-                der_op1 = (op1_pl - op1_mn) / (2*epsilon*bia)
+                op1_pl = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia * (1 + self.epsilon))
+                op1_mn = self.operando(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia * (1 - self.epsilon))
+                der_op1 = (op1_pl - op1_mn) / (2*self.epsilon*bia)
             elif parametro == 'Omega_m0':
-                op1_pl = self.operando(Omega_m0 * (1 + epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia)
-                op1_mn = self.operando(Omega_m0 * (1 - epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia)
-                der_op1 = (op1_pl - op1_mn) / (2*epsilon*Omega_m0)
+                op1_pl = self.operando(Omega_m0 * (1 + self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia)
+                op1_mn = self.operando(Omega_m0 * (1 - self.epsilon), h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma, Aia , nia , bia)
+                der_op1 = (op1_pl - op1_mn) / (2*self.epsilon*Omega_m0)
             else:
                 der_op1 = 0
             return der_op1
