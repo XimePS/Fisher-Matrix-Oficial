@@ -2,43 +2,14 @@ import numpy as np
 import sympy as smp
 import matplotlib.pyplot as plt
 import pandas as pd
-
-# For interpolation
 from scipy.interpolate import RectBivariateSpline, interp2d
 
-import warnings
-
-# Ignore DeprecationWarnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", message=".*divmax.*")
-
 import logging
-# Basic registry settings
 logging.basicConfig(level=logging.INFO)
 
-import Cosmo_util_data as cu
-
-# Parametros fiduciales
-
-Omega_b0_fid = 0.05
-Omega_m0_fid = 0.32
-h_fid = 0.67
-ns_fid = 0.96
-sigma8_fid = 0.816
-Omega_DE0_fid = 0.68
-w0_fid = -1.0
-wa_fid = 0.0
-gamma_fid = 0.55
-
 #c = 9.72 * 10 ** (-15) # en Mpc
-c = 300000 #en km/s
-Aia = 1.72
-Cia = 0.0134
-nia = -0.41
-bia = 2.17
 
 # ---- ANOTHER PARAMETERS
-
 f_out = 0.1
 c_b = 1.0
 z_b = 0.0
@@ -51,6 +22,7 @@ class CosmoIntegration:
     def __init__(self, params):
         self.z = params['z']
         self.model = params['model']
+        self.c = params['c']
 
     def E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         if self.model == 'ACDM_flat':
@@ -103,14 +75,14 @@ class CosmoIntegration:
         z_prime = np.linspace(0, z, 30)
         delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / H_0) 
+        return np.sum(integrand) * (self.c / H_0) 
     
     def r_w(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
         delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
-        return np.sum(integrand) * (c / H_0) * (H_0 / c)
+        return np.sum(integrand) * (self.c / H_0) * (H_0 / self.c)
 
     def n_i_try(self, i, z):
         '''
