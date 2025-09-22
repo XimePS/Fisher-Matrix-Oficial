@@ -5,24 +5,6 @@ from scipy.interpolate import RectBivariateSpline, interp1d
 import matplotlib.pyplot as plt
 import random
 
-# ----- PARÁMETROS FIDUCIALES -----
-Omega_b0_fid = 0.05
-Omega_m0_fid = 0.32
-h_fid = 0.67
-ns_fid = 0.96
-sigma8_fid = 0.816
-Omega_DE0_fid = 0.68
-w0_fid = -1.0
-wa_fid = 0.0
-gamma_fid = 0.55
-
-#c = 9.72 * 10 ** (-15) # en Mpc # 300000 en km/s
-c = 300000 #en km/s
-Aia = 1.72
-Cia = 0.0134
-nia = -0.41
-bia = 2.17
-
 # ----- INTERPOLATION -----
 
 def interpolation(path, lineal = False):
