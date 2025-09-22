@@ -30,11 +30,12 @@ w0_fid = -1.0
 wa_fid = 0.0
 gamma_fid = 0.55
 
-c = 300000
-Aia = 1
+#c = 9.72 * 10 ** (-15) # en Mpc
+c = 300000 #en km/s
+Aia = 1.72
 Cia = 0.0134
-nia = -1
-bia = 1.13
+nia = -0.41
+bia = 2.17
 
 # ---- ANOTHER PARAMETERS
 
@@ -45,7 +46,6 @@ sigma_b = 0.05
 c_o = 1.0
 z_o = 0.1
 sigma_o = 0.05
-
 
 class CosmoIntegration:
     def __init__(self, params):
@@ -71,7 +71,7 @@ class CosmoIntegration:
         elif self.model == 'non_ACDM_non_flat_gamma':
             Omega_k0 = 0
         radicando = (Omega_m0 * (1 + z) ** 3) + (Omega_DE0 * ((1 + z)**(3 * (1 + wa + w0))) * np.exp(-3 * wa * (z / (1 + z)))) + (Omega_k0 * (1 + z)**2)
-        return np.sqrt(radicando)
+        return np.sqrt(radicando) 
 
     def inverse_E2(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         return 1 / self.E2(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
@@ -81,24 +81,34 @@ class CosmoIntegration:
         return ((z / z_0)**2) * np.exp(-(z / z_0)**(3 / 2))
 
     def p_ph(self, z_p, z):
-        first = ((1 - f_out) / (np.sqrt(2 * np.pi) * sigma_b * (1+z))) * np.exp(- 0.5 * (((z - c_b*z_p - z_b) / (sigma_b * (1+z)))**2))
-        second = (f_out / (np.sqrt(2 * np.pi) * sigma_o * (1+z))) * np.exp(- 0.5 * (((z - c_o*z_p - z_o) / (sigma_o * (1+z)))**2))
-        return first + second
+        def p_ph_unormalizate(z_p, z):
+            # Calcula el valor no normalizado (fórmula exacta del paper)
+            first = ((1 - f_out) / (np.sqrt(2 * np.pi) * sigma_b * (1+z))) * np.exp(- 0.5 * (((z - c_b*z_p - z_b) / (sigma_b * (1+z)))**2))
+            second = (f_out / (np.sqrt(2 * np.pi) * sigma_o * (1+z))) * np.exp(- 0.5 * (((z - c_o*z_p - z_o) / (sigma_o * (1+z)))**2))
+            unnormalized = first + second
+            return unnormalized
+        def normalization(z_p, z):
+            delta = z_p[1] - z_p[0]
+            A = np.array([p_ph_unormalizate(zs, z) for zs in z_p]) * delta
+            return np.sum(A)
+        
+        return p_ph_unormalizate(z_p, z) / normalization(z_p, z)
 
     def r(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
+        print(Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)
         '''
         In Mpc
         '''
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
-        delta = z / len(z_prime)
+        delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
         return np.sum(integrand) * (c / H_0) 
     
     def r_w(self, z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
         H_0 = (100 * h)
         z_prime = np.linspace(0, z, 30)
-        delta = z / len(z_prime)
+        delta = z_prime[1] - z_prime[0]
         integrand = self.inverse_E2(z_prime, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) * delta
         return np.sum(integrand) * (c / H_0) * (H_0 / c)
 
@@ -113,7 +123,7 @@ class CosmoIntegration:
 
         def numerator_n_i(i, z):
             z_prime = np.linspace(z_bins[i], z_bins[i + 1], 50)
-            delta = (z_bins[i + 1] - z_bins[i]) / len(z_prime)
+            delta = z_prime[1] - z_prime[0]
             multiplication_array = self.n_t(z) * self.p_ph(z_prime, z)
             result = np.sum(multiplication_array * delta)
             return float(result)
@@ -124,15 +134,14 @@ class CosmoIntegration:
             deno = float(np.sum(num) * delta)
             print(deno)
             return deno
-        return numerator_n_i(i, z) / denominators[i]
+        return numerator_n_i(i, z) / 0.42297290389128317 #/ denominators[i] -> calculé un nuevo denominador con la nueva normalizacion de p_ph
 
     def Window2(self, i, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma):
-        H_0 = (100 * h)
         result = []
         for z in self.z:
             z_max = 2.5
             z_prime = np.linspace(z, z_max, 30)
-            delta = (z_max - z) / len(z_prime)
+            delta = self.z[1] - self.z[0] #(z_max - z) / len(z_prime)
             r_true = self.r_w(z, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma) 
             n_array = np.array([self.n_i_try(i, zs) for zs in z_prime])
             r_array = np.array([(self.r_w(zs, Omega_m0, h, Omega_b0, Omega_DE0, w0, wa, ns, sigma8, gamma)) for zs in z_prime])
